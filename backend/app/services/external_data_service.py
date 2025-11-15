@@ -1,71 +1,122 @@
 """
-외부 DB에서 데이터를 가져오는 서비스
-report와 QuickNews DB에서 데이터 조회
+외부 데이터베이스(QuickNews, Reports) 연동 서비스
 """
 
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
-from sqlalchemy import text, desc
-from app.database import get_reports_db, get_news_db
-
+from sqlalchemy import text
+from app.database import get_news_db, get_reports_db
 
 class ExternalDataService:
-    """외부 DB 데이터 조회 서비스"""
     
-    # ========== 리포트 관련 ==========
+    # ===== QuickNews DB =====
     
     @staticmethod
-    def get_recent_reports(limit: int = 20, category: Optional[str] = None) -> List[Dict]:
-        """
-        최근 증권사 리포트 조회
-        
-        Args:
-            limit: 최대 개수
-            category: 카테고리 필터 (옵션)
-        """
+    def get_news(limit: int = 25, offset: int = 0, source: Optional[str] = None) -> List[Dict]:
+        """QuickNews DB에서 뉴스 조회 (페이지네이션 지원)"""
+        with get_news_db() as session:
+            if source:
+                # 특정 소스만 가져오기
+                query = "SELECT id, title, link, source, sent_at FROM news WHERE source = :source ORDER BY sent_at DESC LIMIT :limit OFFSET :offset"
+                result = session.execute(text(query), {"source": source, "limit": limit, "offset": offset})
+            else:
+                # 모든 소스의 뉴스를 시간순으로 가져오기
+                query = "SELECT id, title, link, source, sent_at FROM news ORDER BY sent_at DESC LIMIT :limit OFFSET :offset"
+                result = session.execute(text(query), {"limit": limit, "offset": offset})
+            
+            news = []
+            for row in result:
+                news.append({
+                    "id": str(row[0]),
+                    "title": row[1],
+                    "summary": row[1],  # 제목을 summary로도 사용
+                    "link": row[2],
+                    "url": row[2],
+                    "source": row[3],
+                    "sent_at": row[4],
+                    "published_at": row[4],
+                    "sentiment": "neutral"
+                })
+            
+            return news
+    
+    @staticmethod
+    def get_news_count(source: Optional[str] = None) -> int:
+        """QuickNews DB의 총 뉴스 개수"""
+        with get_news_db() as session:
+            if source:
+                query = text("SELECT COUNT(*) as count FROM news WHERE source = :source")
+                result = session.execute(query, {"source": source})
+            else:
+                query = text("SELECT COUNT(*) as count FROM news")
+                result = session.execute(query)
+            return result.fetchone()[0]
+    
+    # ===== Reports DB =====
+    
+    @staticmethod
+    def get_reports(limit: int = 25, offset: int = 0, category: Optional[str] = None) -> List[Dict]:
+        """Reports DB에서 리포트 조회 (페이지네이션 지원)"""
         with get_reports_db() as session:
-            query = """
-                SELECT 
-                    id, date, category, title, pdf_url, sent
-                FROM sent_reports
-                WHERE 1=1
-            """
-            params = {}
+            # 리포트 기본 정보 조회
+            query = "SELECT id, date, category, title, pdf_url, sent FROM sent_reports"
             
             if category:
-                query += " AND category = :category"
-                params["category"] = category
-            
-            query += " ORDER BY date DESC LIMIT :limit"
-            params["limit"] = limit
-            
-            result = session.execute(text(query), params)
+                query += " WHERE category = :category"
+                query += " ORDER BY date DESC LIMIT :limit OFFSET :offset"
+                result = session.execute(text(query), {"category": category, "limit": limit, "offset": offset})
+            else:
+                query += " ORDER BY date DESC LIMIT :limit OFFSET :offset"
+                result = session.execute(text(query), {"limit": limit, "offset": offset})
             
             reports = []
             for row in result:
+                report_id = row[0]
+                
+                # 해당 리포트의 종목 분석 정보 조회 (최대 3개)
+                analysis_query = """
+                SELECT stock_name, recommendation, target_price, current_price
+                FROM report_analysis
+                WHERE report_id = :report_id AND stock_name IS NOT NULL
+                LIMIT 3
+                """
+                analysis_result = session.execute(text(analysis_query), {"report_id": report_id})
+                
+                stocks = []
+                for analysis_row in analysis_result:
+                    stock_info = {
+                        "name": analysis_row[0],
+                        "recommendation": analysis_row[1]
+                    }
+                    if analysis_row[2] and analysis_row[3]:  # target_price와 current_price가 있으면
+                        upside = ((analysis_row[2] - analysis_row[3]) / analysis_row[3] * 100) if analysis_row[3] > 0 else 0
+                        stock_info["upside"] = round(upside, 1)
+                    stocks.append(stock_info)
+                
                 reports.append({
-                    "id": row[0],
+                    "id": report_id,
                     "date": row[1],
                     "category": row[2],
                     "title": row[3],
                     "pdf_url": row[4],
-                    "sent": bool(row[5])
+                    "sent": bool(row[5]),
+                    "stocks": stocks  # 분석된 종목 정보 추가
                 })
             
             return reports
     
     @staticmethod
+    def get_reports_count() -> int:
+        """Reports DB의 총 리포트 개수"""
+        with get_reports_db() as session:
+            query = text("SELECT COUNT(*) as count FROM sent_reports")
+            result = session.execute(query)
+            return result.fetchone()[0]
+    
+    @staticmethod
     def get_report_analysis(report_id: Optional[int] = None, 
                            stock_code: Optional[str] = None,
                            limit: int = 50) -> List[Dict]:
-        """
-        리포트 분석 데이터 조회 (종목, 목표가 등)
-        
-        Args:
-            report_id: 특정 리포트 ID
-            stock_code: 특정 종목 코드
-            limit: 최대 개수
-        """
+        """리포트 분석 데이터 조회 (종목, 목표가 등)"""
         with get_reports_db() as session:
             query = """
                 SELECT 
@@ -115,87 +166,26 @@ class ExternalDataService:
             return analyses
     
     @staticmethod
-    def get_houses() -> List[Dict]:
-        """증권사 목록 조회"""
-        with get_reports_db() as session:
-            query = """
-                SELECT id, name, full_name, created_at
-                FROM houses
-                ORDER BY name
-            """
-            result = session.execute(text(query))
-            
-            houses = []
-            for row in result:
-                houses.append({
-                    "id": row[0],
-                    "name": row[1],
-                    "full_name": row[2],
-                    "created_at": row[3]
-                })
-            
-            return houses
-    
-    @staticmethod
-    def get_analysts(house_id: Optional[int] = None) -> List[Dict]:
-        """
-        애널리스트 목록 조회
-        
-        Args:
-            house_id: 특정 증권사의 애널리스트만 조회
-        """
-        with get_reports_db() as session:
-            query = """
-                SELECT 
-                    a.id, a.name, a.department, a.position,
-                    a.house_id, h.name as house_name, h.full_name as house_full_name
-                FROM analysts a
-                LEFT JOIN houses h ON a.house_id = h.id
-                WHERE 1=1
-            """
-            params = {}
-            
-            if house_id:
-                query += " AND a.house_id = :house_id"
-                params["house_id"] = house_id
-            
-            query += " ORDER BY a.name"
-            
-            result = session.execute(text(query), params)
-            
-            analysts = []
-            for row in result:
-                analysts.append({
-                    "id": row[0],
-                    "name": row[1],
-                    "department": row[2],
-                    "position": row[3],
-                    "house_id": row[4],
-                    "house_name": row[5],
-                    "house_full_name": row[6]
-                })
-            
-            return analysts
-    
-    @staticmethod
     def get_top_recommendations(limit: int = 10) -> List[Dict]:
-        """
-        최근 상위 추천 종목 (목표가 상승률 기준)
-        """
+        """상위 추천 종목 (목표가 상승 여력 기준)"""
         with get_reports_db() as session:
             query = """
                 SELECT 
                     ra.stock_code, ra.stock_name,
                     ra.current_price, ra.target_price,
-                    ((ra.target_price - ra.current_price) / ra.current_price * 100) as upside_percent,
+                    ((ra.target_price - ra.current_price) * 100.0 / ra.current_price) AS upside_percent,
                     ra.recommendation, ra.analysis_date,
-                    sr.title, sr.pdf_url
+                    sr.title AS report_title, sr.pdf_url
                 FROM report_analysis ra
-                LEFT JOIN sent_reports sr ON ra.report_id = sr.id
-                WHERE ra.target_price > 0 AND ra.current_price > 0
+                JOIN sent_reports sr ON ra.report_id = sr.id
+                WHERE ra.recommendation = 'BUY' 
+                  AND ra.target_price IS NOT NULL 
+                  AND ra.current_price IS NOT NULL
+                  AND ra.current_price > 0
                 ORDER BY upside_percent DESC
                 LIMIT :limit
             """
+            
             result = session.execute(text(query), {"limit": limit})
             
             recommendations = []
@@ -214,162 +204,106 @@ class ExternalDataService:
             
             return recommendations
     
-    # ========== 뉴스 관련 ==========
+    @staticmethod
+    def get_houses(limit: int = 10) -> List[Dict]:
+        """증권사 목록 조회 (리포트 수 기준 정렬)"""
+        with get_reports_db() as session:
+            try:
+                # sent_reports 테이블에 house_id가 없으므로 단순 조회
+                simple_query = "SELECT id, name, full_name FROM houses LIMIT :limit"
+                result = session.execute(text(simple_query), {"limit": limit})
+                
+                houses = []
+                for row in result:
+                    houses.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "full_name": row[2],
+                        "total_reports": 0  # 스키마에 관계가 없으므로 0
+                    })
+                
+                return houses
+            except Exception as e:
+                print(f"houses 쿼리 에러: {e}")
+                return []
     
     @staticmethod
-    def get_recent_news(limit: int = 50, source: Optional[str] = None) -> List[Dict]:
-        """
-        최근 뉴스 조회
-        
-        Args:
-            limit: 최대 개수
-            source: 소스 필터 (옵션)
-        """
-        with get_news_db() as session:
-            query = """
-                SELECT 
-                    id, title, link, normalized_link,
-                    article_id, office_id, source, sent_at
-                FROM news
-                WHERE 1=1
-            """
-            params = {}
-            
-            if source:
-                query += " AND source = :source"
-                params["source"] = source
-            
-            query += " ORDER BY sent_at DESC LIMIT :limit"
-            params["limit"] = limit
-            
-            result = session.execute(text(query), params)
-            
-            news_list = []
-            for row in result:
-                news_list.append({
-                    "id": row[0],
-                    "title": row[1],
-                    "link": row[2],
-                    "normalized_link": row[3],
-                    "article_id": row[4],
-                    "office_id": row[5],
-                    "source": row[6],
-                    "sent_at": row[7]
-                })
-            
-            return news_list
-    
-    @staticmethod
-    def get_news_sources() -> List[Dict]:
-        """뉴스 소스 목록 및 개수"""
-        with get_news_db() as session:
-            query = """
-                SELECT source, COUNT(*) as count
-                FROM news
-                GROUP BY source
-                ORDER BY count DESC
-            """
-            result = session.execute(text(query))
-            
-            sources = []
-            for row in result:
-                sources.append({
-                    "source": row[0],
-                    "count": row[1]
-                })
-            
-            return sources
-    
-    @staticmethod
-    def search_news(keyword: str, limit: int = 30) -> List[Dict]:
-        """
-        뉴스 제목으로 검색
-        
-        Args:
-            keyword: 검색 키워드
-            limit: 최대 개수
-        """
-        with get_news_db() as session:
-            query = """
-                SELECT 
-                    id, title, link, source, sent_at
-                FROM news
-                WHERE title LIKE :keyword
-                ORDER BY sent_at DESC
-                LIMIT :limit
-            """
-            result = session.execute(
-                text(query), 
-                {"keyword": f"%{keyword}%", "limit": limit}
-            )
-            
-            news_list = []
-            for row in result:
-                news_list.append({
-                    "id": row[0],
-                    "title": row[1],
-                    "link": row[2],
-                    "source": row[3],
-                    "sent_at": row[4]
-                })
-            
-            return news_list
-    
-    # ========== 통합 데이터 ==========
+    def get_analysts(house_id: Optional[int] = None, limit: int = 10) -> List[Dict]:
+        """애널리스트 목록 조회"""
+        with get_reports_db() as session:
+            try:
+                # sent_report_analysts 테이블이 없으므로 단순 조회
+                if house_id:
+                    query = """
+                        SELECT a.id, a.name, a.department, a.position, a.house_id, h.name as house
+                        FROM analysts a
+                        LEFT JOIN houses h ON a.house_id = h.id
+                        WHERE a.house_id = :house_id
+                        LIMIT :limit
+                    """
+                    result = session.execute(text(query), {"house_id": house_id, "limit": limit})
+                else:
+                    query = """
+                        SELECT a.id, a.name, a.department, a.position, a.house_id, h.name as house
+                        FROM analysts a
+                        LEFT JOIN houses h ON a.house_id = h.id
+                        LIMIT :limit
+                    """
+                    result = session.execute(text(query), {"limit": limit})
+                
+                analysts = []
+                for row in result:
+                    analysts.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "department": row[2],
+                        "position": row[3],
+                        "house_id": row[4],
+                        "house": row[5],
+                        "total_reports": 0  # 스키마에 관계가 없으므로 0
+                    })
+                
+                return analysts
+            except Exception as e:
+                print(f"analysts 쿼리 에러: {e}")
+                return []
     
     @staticmethod
     def get_dashboard_summary() -> Dict:
-        """
-        대시보드용 요약 데이터
-        """
-        with get_reports_db() as reports_db, get_news_db() as news_db:
-            # 리포트 통계
-            reports_count = reports_db.execute(
-                text("SELECT COUNT(*) FROM sent_reports")
-            ).scalar()
-            
-            analysis_count = reports_db.execute(
-                text("SELECT COUNT(*) FROM report_analysis")
-            ).scalar()
-            
-            # 뉴스 통계
-            news_count = news_db.execute(
-                text("SELECT COUNT(*) FROM news")
-            ).scalar()
-            
-            # 최근 24시간 뉴스
-            yesterday = (datetime.now() - timedelta(days=1)).isoformat()
-            recent_news_count = news_db.execute(
-                text("SELECT COUNT(*) FROM news WHERE sent_at > :yesterday"),
-                {"yesterday": yesterday}
-            ).scalar()
-            
+        """대시보드용 요약 통계"""
+        try:
+            with get_reports_db() as reports_session, get_news_db() as news_session:
+                # 리포트 통계
+                reports_count = reports_session.execute(
+                    text("SELECT COUNT(*) FROM sent_reports")
+                ).scalar() or 0
+                
+                analysis_count = reports_session.execute(
+                    text("SELECT COUNT(*) FROM report_analysis")
+                ).scalar() or 0
+                
+                # 뉴스 통계
+                news_count = news_session.execute(
+                    text("SELECT COUNT(*) FROM news")
+                ).scalar() or 0
+                
+                return {
+                    "reports": {
+                        "total_reports": reports_count,
+                        "total_analysis": analysis_count,
+                    },
+                    "news": {
+                        "total_news": news_count,
+                    }
+                }
+        except Exception as e:
+            print(f"dashboard_summary 에러: {e}")
             return {
                 "reports": {
-                    "total_reports": reports_count,
-                    "total_analysis": analysis_count
+                    "total_reports": 0,
+                    "total_analysis": 0,
                 },
                 "news": {
-                    "total_news": news_count,
-                    "recent_24h": recent_news_count
+                    "total_news": 0,
                 }
             }
-
-
-# 편의 함수들
-def get_latest_reports(limit: int = 10):
-    """최신 리포트 10개"""
-    return ExternalDataService.get_recent_reports(limit=limit)
-
-
-def get_latest_news(limit: int = 20):
-    """최신 뉴스 20개"""
-    return ExternalDataService.get_recent_news(limit=limit)
-
-
-def get_stock_analysis(stock_code: str):
-    """특정 종목 분석"""
-    return ExternalDataService.get_report_analysis(stock_code=stock_code)
-
-
-

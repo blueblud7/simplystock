@@ -143,7 +143,20 @@ def get_sp500_tickers() -> List[str]:
         response = requests.get(url, headers=headers, timeout=10)
         table = pd.read_html(response.content)
         df = table[0]
-        return df['Symbol'].str.replace('.', '-').tolist()
+        
+        # 가능한 컬럼 이름 확인
+        possible_columns = ['Symbol', 'Ticker', 'Ticker symbol']
+        symbol_col = None
+        for col in possible_columns:
+            if col in df.columns:
+                symbol_col = col
+                break
+        
+        if symbol_col is None:
+            print(f"S&P 500 Symbol 컬럼 없음. 사용 가능한 컬럼: {df.columns.tolist()}")
+            raise ValueError("Symbol 컬럼을 찾을 수 없습니다")
+        
+        return df[symbol_col].str.replace('.', '-').tolist()
     except Exception as e:
         print(f"S&P 500 티커 로드 실패: {e}")
         # Fallback: 주요 종목 하드코딩
@@ -160,9 +173,17 @@ def get_nasdaq100_tickers() -> List[str]:
         headers = {'User-Agent': 'Mozilla/5.0'}
         url = 'https://en.wikipedia.org/wiki/NASDAQ-100'
         response = requests.get(url, headers=headers, timeout=10)
-        table = pd.read_html(response.content)
-        df = table[4]
-        return df['Ticker'].str.replace('.', '-').tolist()
+        tables = pd.read_html(response.content)
+        
+        # 여러 테이블에서 Ticker 컬럼 찾기
+        possible_columns = ['Ticker', 'Symbol', 'Ticker symbol']
+        for table in tables:
+            for col in possible_columns:
+                if col in table.columns:
+                    return table[col].str.replace('.', '-').tolist()
+        
+        print(f"NASDAQ 100 Ticker 컬럼을 찾을 수 없음")
+        raise ValueError("Ticker 컬럼을 찾을 수 없습니다")
     except Exception as e:
         print(f"NASDAQ 100 티커 로드 실패: {e}")
         # Fallback: 주요 종목 하드코딩

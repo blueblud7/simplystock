@@ -4,31 +4,68 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { formatNumber, formatPercent } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
-// 임시 데이터
-const highStocks = [
-  { symbol: "AAPL", name: "Apple Inc.", price: 195.71, change: 2.45, changePercent: 1.27, daysAtHigh: 1 },
-  { symbol: "MSFT", name: "Microsoft Corp.", price: 378.91, change: 5.23, changePercent: 1.40, daysAtHigh: 1 },
-  { symbol: "NVDA", name: "NVIDIA Corp.", price: 495.22, change: 8.45, changePercent: 1.74, daysAtHigh: 2 },
-  { symbol: "GOOGL", name: "Alphabet Inc.", price: 141.80, change: 1.92, changePercent: 1.37, daysAtHigh: 1 },
-  { symbol: "META", name: "Meta Platforms", price: 338.54, change: 4.21, changePercent: 1.26, daysAtHigh: 3 },
-];
-
-const lowStocks = [
-  { symbol: "TSLA", name: "Tesla Inc.", price: 238.72, change: -12.45, changePercent: -4.96, daysAtLow: 1 },
-  { symbol: "DIS", name: "Walt Disney Co.", price: 82.15, change: -3.21, changePercent: -3.76, daysAtLow: 2 },
-  { symbol: "INTC", name: "Intel Corp.", price: 43.89, change: -2.11, changePercent: -4.59, daysAtLow: 1 },
-  { symbol: "PYPL", name: "PayPal Holdings", price: 58.32, change: -1.87, changePercent: -3.11, daysAtLow: 4 },
-  { symbol: "BA", name: "Boeing Co.", price: 178.43, change: -5.67, changePercent: -3.08, daysAtLow: 1 },
-];
+interface Stock {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  change_percent: number;
+  days_at_high?: number;
+  days_at_low?: number;
+}
 
 export function Week52Highlights() {
+  const [highStocks, setHighStocks] = useState<Stock[]>([]);
+  const [lowStocks, setLowStocks] = useState<Stock[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [highsRes, lowsRes] = await Promise.all([
+          fetch("http://localhost:8001/api/52week/highs?limit=5"),
+          fetch("http://localhost:8001/api/52week/lows?limit=5")
+        ]);
+
+        const highsData = await highsRes.json();
+        const lowsData = await lowsRes.json();
+
+        setHighStocks(highsData.stocks || []);
+        setLowStocks(lowsData.stocks || []);
+      } catch (error) {
+        console.error("Failed to fetch 52-week data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>52주 신고가/신저가</CardTitle>
+          <CardDescription>
+            최근 52주 신고가 또는 신저가를 기록한 주요 종목
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>52주 신고가/신저가</CardTitle>
         <CardDescription>
-          최근 52주 신고가 또는 신저가를 기록한 주요 종목
+          최근 52주 신고가 또는 신저가를 기록한 주요 종목 (실시간)
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -36,65 +73,77 @@ export function Week52Highlights() {
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="high">
               <TrendingUp className="mr-2 h-4 w-4" />
-              신고가
+              신고가 ({highStocks.length})
             </TabsTrigger>
             <TabsTrigger value="low">
               <TrendingDown className="mr-2 h-4 w-4" />
-              신저가
+              신저가 ({lowStocks.length})
             </TabsTrigger>
           </TabsList>
           
           <TabsContent value="high" className="space-y-4">
             <div className="space-y-2">
-              {highStocks.map((stock) => (
-                <div
-                  key={stock.symbol}
-                  className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent transition-colors"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2">
-                      <p className="font-semibold">{stock.symbol}</p>
-                      <span className="text-xs text-muted-foreground">
-                        {stock.daysAtHigh === 1 ? '오늘' : `${stock.daysAtHigh}일째`}
-                      </span>
+              {highStocks.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4">데이터가 없습니다</p>
+              ) : (
+                highStocks.map((stock) => (
+                  <div
+                    key={stock.symbol}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent transition-colors"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2">
+                        <p className="font-semibold">{stock.symbol}</p>
+                        {stock.days_at_high && (
+                          <span className="text-xs text-muted-foreground">
+                            {stock.days_at_high === 1 ? '오늘' : `${stock.days_at_high}일째`}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{stock.name}</p>
                     </div>
-                    <p className="text-sm text-muted-foreground">{stock.name}</p>
+                    <div className="text-right">
+                      <p className="font-semibold">${formatNumber(stock.price)}</p>
+                      <p className="text-sm text-success">
+                        {formatPercent(stock.change_percent)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">${formatNumber(stock.price)}</p>
-                    <p className="text-sm text-success">
-                      {formatPercent(stock.changePercent)}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </TabsContent>
           
           <TabsContent value="low" className="space-y-4">
             <div className="space-y-2">
-              {lowStocks.map((stock) => (
-                <div
-                  key={stock.symbol}
-                  className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent transition-colors"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2">
-                      <p className="font-semibold">{stock.symbol}</p>
-                      <span className="text-xs text-muted-foreground">
-                        {stock.daysAtLow === 1 ? '오늘' : `${stock.daysAtLow}일째`}
-                      </span>
+              {lowStocks.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4">데이터가 없습니다</p>
+              ) : (
+                lowStocks.map((stock) => (
+                  <div
+                    key={stock.symbol}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent transition-colors"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2">
+                        <p className="font-semibold">{stock.symbol}</p>
+                        {stock.days_at_low && (
+                          <span className="text-xs text-muted-foreground">
+                            {stock.days_at_low === 1 ? '오늘' : `${stock.days_at_low}일째`}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{stock.name}</p>
                     </div>
-                    <p className="text-sm text-muted-foreground">{stock.name}</p>
+                    <div className="text-right">
+                      <p className="font-semibold">${formatNumber(stock.price)}</p>
+                      <p className="text-sm text-danger">
+                        {formatPercent(stock.change_percent)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">${formatNumber(stock.price)}</p>
-                    <p className="text-sm text-danger">
-                      {formatPercent(stock.changePercent)}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </TabsContent>
         </Tabs>

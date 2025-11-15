@@ -12,6 +12,11 @@ from app.services.external_data_service import ExternalDataService
 router = APIRouter()
 
 # Response Models
+class StockInfo(BaseModel):
+    name: str
+    recommendation: Optional[str] = None
+    upside: Optional[float] = None
+
 class Report(BaseModel):
     id: int
     date: str
@@ -19,6 +24,7 @@ class Report(BaseModel):
     title: str
     pdf_url: Optional[str] = None
     sent: bool
+    stocks: List[StockInfo] = []
 
 class ReportAnalysis(BaseModel):
     id: int
@@ -65,7 +71,7 @@ class AnalysisResponse(BaseModel):
 @router.get("/", response_model=ReportsResponse)
 async def get_reports(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(25, ge=1, le=100),
     category: Optional[str] = None,
 ):
     """
@@ -73,19 +79,20 @@ async def get_reports(
     - category: 카테고리 필터
     """
     try:
-        reports = ExternalDataService.get_recent_reports(
-            limit=page_size * page,
+        # 전체 개수 조회
+        total_count = ExternalDataService.get_reports_count()
+        
+        # 페이징된 리포트 조회
+        offset = (page - 1) * page_size
+        reports = ExternalDataService.get_reports(
+            limit=page_size,
+            offset=offset,
             category=category
         )
         
-        # 페이징
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_reports = reports[start_idx:end_idx]
-        
         return ReportsResponse(
-            reports=paginated_reports,
-            total=len(reports),
+            reports=reports,
+            total=total_count,
             page=page,
             page_size=page_size
         )
@@ -161,12 +168,14 @@ async def get_top_recommendations(
 
 
 @router.get("/houses")
-async def get_houses():
+async def get_houses(
+    limit: int = Query(10, ge=1, le=50)
+):
     """
-    증권사 목록
+    증권사 목록 (리포트 발행 수 기준 정렬)
     """
     try:
-        houses = ExternalDataService.get_houses()
+        houses = ExternalDataService.get_houses(limit=limit)
         return {
             "houses": houses,
             "total": len(houses)
@@ -181,14 +190,15 @@ async def get_houses():
 
 @router.get("/analysts")
 async def get_analysts(
-    house_id: Optional[int] = None
+    house_id: Optional[int] = None,
+    limit: int = Query(10, ge=1, le=50)
 ):
     """
-    애널리스트 목록
+    애널리스트 목록 (리포트 발행 수 기준 정렬)
     - house_id: 특정 증권사의 애널리스트만 조회
     """
     try:
-        analysts = ExternalDataService.get_analysts(house_id=house_id)
+        analysts = ExternalDataService.get_analysts(house_id=house_id, limit=limit)
         return {
             "analysts": analysts,
             "total": len(analysts)
@@ -215,6 +225,61 @@ async def get_reports_summary():
             "total_reports": 0,
             "total_analysis": 0
         }
+
+
+@router.get("/{report_id}")
+async def get_report_detail(report_id: int):
+    """
+    리포트 상세 정보 (리포트 기본 정보 + 포함된 종목 분석)
+    """
+    try:
+        # 리포트 기본 정보 (DB에서 직접 조회)
+        from app.database import get_reports_db
+        from sqlalchemy import text
+        
+        with get_reports_db() as session:
+            query = """
+                SELECT id, date, category, title, pdf_url, sent
+                FROM sent_reports
+                WHERE id = :report_id
+            """
+            result = session.execute(text(query), {"report_id": report_id}).fetchone()
+            
+            if not result:
+                raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
+            
+            report = {
+                "id": result[0],
+                "date": result[1],
+                "category": result[2],
+                "title": result[3],
+                "pdf_url": result[4],
+                "sent": bool(result[5])
+            }
+        
+        # 해당 리포트의 종목 분석
+        analyses = ExternalDataService.get_report_analysis(report_id=report_id, limit=100)
+        
+        # upside_percent 계산
+        for analysis in analyses:
+            if analysis.get("current_price") and analysis.get("target_price"):
+                current = analysis["current_price"]
+                target = analysis["target_price"]
+                if current > 0:
+                    analysis["upside_percent"] = round(
+                        ((target - current) / current) * 100, 2
+                    )
+        
+        return {
+            "report": report,
+            "analyses": analyses,
+            "total_stocks": len(analyses)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ 리포트 상세 조회 에러: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

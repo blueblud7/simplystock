@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Newspaper, TrendingUp, TrendingDown, Minus, Search, Filter, ExternalLink } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { NewsModal } from "@/components/news/news-modal";
 
 interface NewsArticle {
   id: string;
@@ -54,13 +55,20 @@ function getSentimentBadge(sentiment: string) {
 export default function NewsPage() {
   const [allNews, setAllNews] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedNews, setSelectedNews] = useState<NewsArticle | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalNews, setTotalNews] = useState(0);
 
   useEffect(() => {
     const fetchNews = async () => {
       try {
-        const response = await fetch("http://localhost:8001/api/news/?page_size=50");
+        setLoading(true);
+        const response = await fetch(`http://localhost:8001/api/news/?page=${currentPage}&page_size=${pageSize}`);
         const data = await response.json();
         setAllNews(data.articles || []);
+        setTotalNews(data.total || 0);
       } catch (error) {
         console.error("Failed to fetch news:", error);
         setAllNews([]);
@@ -70,7 +78,24 @@ export default function NewsPage() {
     };
 
     fetchNews();
-  }, []);
+  }, [currentPage, pageSize]);
+
+  const handleNewsClick = (newsItem: NewsArticle) => {
+    setSelectedNews(newsItem);
+    setIsModalOpen(true);
+  };
+
+  const totalPages = Math.ceil(totalNews / pageSize);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
 
   if (loading) {
     return (
@@ -95,25 +120,31 @@ export default function NewsPage() {
 
   return (
     <div className="space-y-6">
+      <NewsModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        news={selectedNews}
+      />
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">뉴스 허브</h1>
           <p className="text-muted-foreground">
-            실시간 금융 뉴스 ({allNews.length}개)
+            실시간 금융 뉴스 (전체 {totalNews.toLocaleString()}개)
           </p>
         </div>
         
-        {/* 검색 및 필터 (추후 구현) */}
-        <div className="flex items-center space-x-2">
-          <button className="flex items-center space-x-2 px-4 py-2 border rounded-md hover:bg-accent">
-            <Search className="h-4 w-4" />
-            <span>검색</span>
-          </button>
-          <button className="flex items-center space-x-2 px-4 py-2 border rounded-md hover:bg-accent">
-            <Filter className="h-4 w-4" />
-            <span>필터</span>
-          </button>
+        {/* 페이지 크기 선택 */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">페이지당:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="px-3 py-2 border rounded-md bg-background hover:bg-accent cursor-pointer"
+          >
+            <option value={25}>25개</option>
+            <option value={50}>50개</option>
+          </select>
         </div>
       </div>
 
@@ -154,16 +185,14 @@ export default function NewsPage() {
                 <p className="text-muted-foreground">뉴스가 없습니다.</p>
               </CardContent>
             </Card>
-          ) : (
-            allNews.map((article) => (
-              <a 
-                key={article.id} 
-                href={article.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
-                <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                ) : (
+                  allNews.map((article) => (
+                    <div
+                      key={article.id}
+                      onClick={() => handleNewsClick(article)}
+                      className="block"
+                    >
+                      <Card className="hover:shadow-md transition-shadow cursor-pointer">
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center space-x-2">
@@ -203,22 +232,20 @@ export default function NewsPage() {
                           </span>
                         ))}
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </a>
-            ))
-          )}
-        </TabsContent>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ))
+              )}
+            </TabsContent>
         
         {/* 긍정 뉴스 탭 */}
         <TabsContent value="positive" className="space-y-4 mt-6">
           {allNews.filter(n => n.sentiment === "positive").map((article) => (
-            <a 
+            <div 
               key={article.id} 
-              href={article.url}
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={() => handleNewsClick(article)}
               className="block"
             >
               <Card className="hover:shadow-md transition-shadow cursor-pointer">
@@ -240,18 +267,16 @@ export default function NewsPage() {
                   </div>
                 </CardContent>
               </Card>
-            </a>
+            </div>
           ))}
         </TabsContent>
         
         {/* 부정 뉴스 탭 */}
         <TabsContent value="negative" className="space-y-4 mt-6">
           {allNews.filter(n => n.sentiment === "negative").map((article) => (
-            <a 
+            <div 
               key={article.id} 
-              href={article.url}
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={() => handleNewsClick(article)}
               className="block"
             >
               <Card className="hover:shadow-md transition-shadow cursor-pointer">
@@ -273,10 +298,90 @@ export default function NewsPage() {
                   </div>
                 </CardContent>
               </Card>
-            </a>
+            </div>
           ))}
         </TabsContent>
       </Tabs>
+
+      {/* 페이지네이션 */}
+      {totalPages > 1 && (
+        <Card>
+          <CardContent className="py-6">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {totalNews.toLocaleString()}개 중 {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalNews)}개 표시
+              </p>
+              
+              <div className="flex items-center gap-2">
+                {/* 이전 버튼 */}
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  이전
+                </button>
+
+                {/* 페이지 번호 */}
+                <div className="flex items-center gap-1">
+                  {currentPage > 3 && (
+                    <>
+                      <button
+                        onClick={() => handlePageChange(1)}
+                        className="px-3 py-2 border rounded-md hover:bg-accent"
+                      >
+                        1
+                      </button>
+                      {currentPage > 4 && <span className="px-2">...</span>}
+                    </>
+                  )}
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => {
+                      return page === currentPage || 
+                             page === currentPage - 1 || 
+                             page === currentPage + 1 ||
+                             page === currentPage - 2 ||
+                             page === currentPage + 2;
+                    })
+                    .map(page => (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`px-3 py-2 border rounded-md hover:bg-accent ${
+                          currentPage === page ? 'bg-primary text-primary-foreground' : ''
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+
+                  {currentPage < totalPages - 2 && (
+                    <>
+                      {currentPage < totalPages - 3 && <span className="px-2">...</span>}
+                      <button
+                        onClick={() => handlePageChange(totalPages)}
+                        className="px-3 py-2 border rounded-md hover:bg-accent"
+                      >
+                        {totalPages}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* 다음 버튼 */}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 border rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  다음
+                </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 뉴스 통계 */}
       {allNews.length > 0 && (

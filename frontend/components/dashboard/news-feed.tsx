@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Newspaper, TrendingUp, TrendingDown, Minus, ExternalLink } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { NewsModal } from "@/components/news/news-modal";
 
 interface NewsArticle {
   id: string;
@@ -29,11 +30,13 @@ function getSentimentIcon(sentiment: string) {
 export function NewsFeed() {
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedNews, setSelectedNews] = useState<NewsArticle | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchNews = async () => {
       try {
-        const response = await fetch("http://localhost:8001/api/news/?page_size=5");
+        const response = await fetch("http://localhost:8001/api/news/?page_size=8");
         const data = await response.json();
         setNews(data.articles || []);
       } catch (error) {
@@ -45,7 +48,16 @@ export function NewsFeed() {
     };
 
     fetchNews();
+    
+    // 5분마다 자동 새로고침
+    const interval = setInterval(fetchNews, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
+
+  const handleNewsClick = (newsItem: NewsArticle) => {
+    setSelectedNews(newsItem);
+    setIsModalOpen(true);
+  };
 
   if (loading) {
     return (
@@ -69,31 +81,35 @@ export function NewsFeed() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center">
-          <Newspaper className="mr-2 h-5 w-5" />
-          최신 뉴스
-        </CardTitle>
-        <CardDescription>
-          QuickNews DB에서 실시간 뉴스 제공 ({news.length}개)
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {news.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              뉴스가 없습니다.
-            </div>
-          ) : (
-            news.map((item) => (
-              <a
-                key={item.id}
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block rounded-lg border p-4 hover:bg-accent transition-colors cursor-pointer"
-              >
+    <>
+      <NewsModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        news={selectedNews}
+      />
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Newspaper className="mr-2 h-5 w-5" />
+            최신 뉴스
+          </CardTitle>
+                <CardDescription>
+                  최신 금융 뉴스 ({news.length}개) • 5분마다 자동 업데이트
+                </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {news.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                뉴스가 없습니다.
+              </div>
+            ) : (
+              news.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => handleNewsClick(item)}
+                  className="block rounded-lg border p-4 hover:bg-accent transition-colors cursor-pointer"
+                >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
@@ -119,12 +135,13 @@ export function NewsFeed() {
                     )}
                   </div>
                 </div>
-              </a>
+              </div>
             ))
           )}
         </div>
       </CardContent>
     </Card>
+    </>
   );
 }
 

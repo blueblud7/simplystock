@@ -3,6 +3,7 @@ import { SectorHeatmap } from "@/components/dashboard/sector-heatmap";
 import { MacroIndicators } from "@/components/dashboard/macro-indicators";
 import { Week52Highlights } from "@/components/dashboard/52week-highlights";
 import { NewsFeed } from "@/components/dashboard/news-feed";
+import { ReportHighlights } from "@/components/dashboard/report-highlights";
 
 export default function Home() {
   return (
@@ -29,8 +30,14 @@ export default function Home() {
       {/* 섹터별 히트맵 */}
       <SectorHeatmap />
 
-      {/* 최신 뉴스 */}
-      <NewsFeed />
+      {/* 뉴스 & 리포트 */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* 최신 뉴스 */}
+        <NewsFeed />
+        
+        {/* 증권사 추천 종목 */}
+        <ReportHighlights />
+      </div>
     </div>
   );
 }

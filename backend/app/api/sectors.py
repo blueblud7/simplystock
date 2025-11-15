@@ -88,16 +88,63 @@ async def get_sector_performance():
     
     return {"sectors": sectors}
 
-@router.get("/history/{symbol}")
-async def get_sector_history(
-    symbol: str,
-    period: str = Query("1m", regex="^(1d|1w|1m|3m|1y)$")
+@router.get("/history")
+async def get_sectors_history(
+    days: int = Query(30, ge=1, le=365)
 ):
-    """섹터 히스토리 데이터"""
-    # TODO: 실제 데이터베이스에서 조회
-    return {
-        "symbol": symbol,
-        "period": period,
-        "data": []
-    }
+    """
+    섹터별 히스토리 데이터 (yfinance)
+    
+    최근 N일간의 모든 섹터 수익률 추이를 반환합니다.
+    """
+    try:
+        history = []
+        
+        # 각 섹터 ETF의 히스토리 데이터 수집
+        for symbol, info in SECTOR_ETFS.items():
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period=f"{days}d")
+                
+                if not hist.empty:
+                    # 날짜별 수익률 계산
+                    for i, (date, row) in enumerate(hist.iterrows()):
+                        if i == 0:
+                            continue  # 첫날은 변화율 계산 불가
+                        
+                        prev_close = hist['Close'].iloc[i-1]
+                        current_close = row['Close']
+                        change_percent = ((current_close - prev_close) / prev_close * 100) if prev_close > 0 else 0
+                        
+                        # 해당 날짜의 데이터 찾기 또는 생성
+                        date_str = date.strftime("%Y-%m-%d")
+                        existing_entry = next((item for item in history if item['date'] == date_str), None)
+                        
+                        if existing_entry:
+                            existing_entry[info['name']] = round(change_percent, 2)
+                        else:
+                            history.append({
+                                'date': date_str,
+                                info['name']: round(change_percent, 2)
+                            })
+            except Exception as e:
+                print(f"Error fetching history for {symbol}: {e}")
+                continue
+        
+        # 날짜순 정렬
+        history.sort(key=lambda x: x['date'])
+        
+        return {
+            "history": history[-days:],  # 최근 N일
+            "days": len(history),
+            "sectors": list(SECTOR_ETFS.values())
+        }
+    except Exception as e:
+        print(f"Error in get_sectors_history: {e}")
+        return {
+            "history": [],
+            "days": 0,
+            "sectors": [],
+            "error": str(e)
+        }
 

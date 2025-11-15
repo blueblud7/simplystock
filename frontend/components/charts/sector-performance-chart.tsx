@@ -1,52 +1,91 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
-// 임시 히스토리 데이터
-const dailyData = Array.from({ length: 30 }, (_, i) => ({
-  date: `${i + 1}일`,
-  기술: Math.random() * 5 - 1,
-  금융: Math.random() * 4 - 1,
-  헬스케어: Math.random() * 3,
-  에너지: Math.random() * 4 - 2,
-  통신: Math.random() * 4,
-}));
-
-const weeklyData = Array.from({ length: 12 }, (_, i) => ({
-  date: `${i + 1}주`,
-  기술: Math.random() * 15 - 3,
-  금융: Math.random() * 12 - 2,
-  헬스케어: Math.random() * 10,
-  에너지: Math.random() * 12 - 5,
-  통신: Math.random() * 12,
-}));
-
-const monthlyData = Array.from({ length: 12 }, (_, i) => ({
-  date: `${i + 1}월`,
-  기술: Math.random() * 30 - 5,
-  금융: Math.random() * 25 - 3,
-  헬스케어: Math.random() * 20,
-  에너지: Math.random() * 25 - 10,
-  통신: Math.random() * 25,
-}));
-
-const colors = {
+const colors: Record<string, string> = {
   기술: "#3b82f6",
   금융: "#10b981",
   헬스케어: "#f59e0b",
   에너지: "#ef4444",
   통신: "#8b5cf6",
+  소비재: "#ec4899",
+  산업재: "#06b6d4",
+  유틸리티: "#84cc16",
+  부동산: "#a855f7",
+  소재: "#f97316",
+  필수소비재: "#14b8a6",
 };
 
 export function SectorPerformanceChart() {
+  const [dailyData, setDailyData] = useState<any[]>([]);
+  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        // 각 기간별로 데이터 가져오기
+        const [dailyRes, weeklyRes, monthlyRes] = await Promise.all([
+          fetch("http://localhost:8001/api/sectors/history?days=30"),
+          fetch("http://localhost:8001/api/sectors/history?days=90"),
+          fetch("http://localhost:8001/api/sectors/history?days=365")
+        ]);
+
+        const dailyJson = await dailyRes.json();
+        const weeklyJson = await weeklyRes.json();
+        const monthlyJson = await monthlyRes.json();
+
+        if (dailyJson.history) {
+          setDailyData(dailyJson.history.map((item: any) => ({
+            ...item,
+            date: item.date.substring(5) // YYYY-MM-DD -> MM-DD
+          })));
+        }
+
+        if (weeklyJson.history) {
+          // 주별로 샘플링 (7일마다)
+          const weeklyFiltered = weeklyJson.history.filter((_: any, i: number) => i % 7 === 0);
+          setWeeklyData(weeklyFiltered.map((item: any) => ({
+            ...item,
+            date: item.date.substring(5)
+          })));
+        }
+
+        if (monthlyJson.history) {
+          // 월별로 샘플링 (30일마다)
+          const monthlyFiltered = monthlyJson.history.filter((_: any, i: number) => i % 30 === 0);
+          setMonthlyData(monthlyFiltered.map((item: any) => ({
+            ...item,
+            date: item.date.substring(5, 7) + '월' // YYYY-MM-DD -> MM월
+          })));
+        }
+      } catch (error) {
+        console.error("Failed to fetch sector history:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHistory();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
   return (
     <Tabs defaultValue="daily" className="w-full">
       <TabsList className="grid w-full grid-cols-3">
-        <TabsTrigger value="daily">일별</TabsTrigger>
-        <TabsTrigger value="weekly">주별</TabsTrigger>
-        <TabsTrigger value="monthly">월별</TabsTrigger>
+        <TabsTrigger value="daily">일별 (30일)</TabsTrigger>
+        <TabsTrigger value="weekly">주별 (90일)</TabsTrigger>
+        <TabsTrigger value="monthly">월별 (1년)</TabsTrigger>
       </TabsList>
       
       <TabsContent value="daily" className="mt-6">

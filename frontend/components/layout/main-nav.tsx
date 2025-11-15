@@ -9,7 +9,8 @@ import {
   TrendingUp, 
   Globe, 
   Newspaper,
-  Briefcase 
+  Briefcase,
+  FileText
 } from "lucide-react";
 
 const navigation = [
@@ -18,6 +19,7 @@ const navigation = [
   { name: "52주 신고가/신저가", href: "/52week", icon: TrendingUp },
   { name: "매크로 지표", href: "/macro", icon: Globe },
   { name: "뉴스", href: "/news", icon: Newspaper },
+  { name: "증권사 리포트", href: "/reports", icon: FileText },
   { name: "포트폴리오", href: "/portfolio", icon: Briefcase },
 ];
 

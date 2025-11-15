@@ -48,19 +48,20 @@ async def get_news(
     """
     # 실제 DB에서 뉴스 가져오기
     try:
-        news_data = ExternalDataService.get_recent_news(
-            limit=page_size * page,  # 페이징 처리
+        # 전체 뉴스 개수 조회
+        total_count = ExternalDataService.get_news_count(source=source)
+        
+        # 페이징된 뉴스 가져오기
+        offset = (page - 1) * page_size
+        news_data = ExternalDataService.get_news(
+            limit=page_size,
+            offset=offset,
             source=source
         )
         
-        # 페이징 처리
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_news = news_data[start_idx:end_idx]
-        
         # 응답 형식으로 변환
         articles = []
-        for news_item in paginated_news:
+        for news_item in news_data:
             articles.append(NewsArticle(
                 id=str(news_item["id"]),
                 title=news_item["title"],
@@ -76,7 +77,7 @@ async def get_news(
         
         return NewsResponse(
             articles=articles,
-            total=len(news_data),
+            total=total_count,
             page=page,
             page_size=page_size
         )
