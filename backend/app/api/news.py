@@ -2,6 +2,7 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+from app.services.external_data_service import ExternalDataService
 
 router = APIRouter()
 
@@ -9,17 +10,17 @@ router = APIRouter()
 class NewsArticle(BaseModel):
     id: str
     title: str
-    summary: str
+    summary: Optional[str] = None
     content: Optional[str] = None
     source: str
     author: Optional[str] = None
     url: str
     image_url: Optional[str] = None
     published_at: datetime
-    sentiment: str  # positive, negative, neutral
-    sentiment_score: float
+    sentiment: Optional[str] = "neutral"  # positive, negative, neutral
+    sentiment_score: Optional[float] = 0.0
     tickers: List[str] = []
-    category: str  # earnings, m&a, policy, tech, etc.
+    category: Optional[str] = "general"  # earnings, m&a, policy, tech, etc.
 
 class NewsResponse(BaseModel):
     articles: List[NewsArticle]
@@ -39,47 +40,55 @@ async def get_news(
     end_date: Optional[datetime] = None,
 ):
     """
-    뉴스 목록 조회
+    뉴스 목록 조회 (QuickNews DB에서 실제 데이터 가져오기)
     - source: 뉴스 소스 필터
     - sentiment: 감성 분석 결과 필터 (positive, negative, neutral)
     - ticker: 종목 티커 필터
     - category: 카테고리 필터
     """
-    # TODO: 실제 데이터베이스에서 조회
-    # 임시 데이터
-    articles = [
-        NewsArticle(
-            id="1",
-            title="연준, 기준금리 동결 결정...인플레이션 압력 완화",
-            summary="연방준비제도가 기준금리를 5.25-5.50%로 유지하기로 결정했습니다.",
-            source="Bloomberg",
-            url="https://example.com/news/1",
-            published_at=datetime.now() - timedelta(hours=2),
-            sentiment="neutral",
-            sentiment_score=0.05,
-            tickers=["SPY", "QQQ"],
-            category="policy"
-        ),
-        NewsArticle(
-            id="2",
-            title="엔비디아, AI 칩 수요 급증으로 매출 전망 상향",
-            summary="엔비디아가 데이터센터용 AI 칩의 수요 급증으로 다음 분기 매출 전망을 상향 조정했습니다.",
-            source="CNBC",
-            url="https://example.com/news/2",
-            published_at=datetime.now() - timedelta(hours=4),
-            sentiment="positive",
-            sentiment_score=0.85,
-            tickers=["NVDA"],
-            category="earnings"
-        ),
-    ]
-    
-    return NewsResponse(
-        articles=articles,
-        total=len(articles),
-        page=page,
-        page_size=page_size
-    )
+    # 실제 DB에서 뉴스 가져오기
+    try:
+        news_data = ExternalDataService.get_recent_news(
+            limit=page_size * page,  # 페이징 처리
+            source=source
+        )
+        
+        # 페이징 처리
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_news = news_data[start_idx:end_idx]
+        
+        # 응답 형식으로 변환
+        articles = []
+        for news_item in paginated_news:
+            articles.append(NewsArticle(
+                id=str(news_item["id"]),
+                title=news_item["title"],
+                summary=news_item["title"],  # 요약이 없으면 제목 사용
+                source=news_item["source"],
+                url=news_item["link"],
+                published_at=datetime.fromisoformat(news_item["sent_at"]) if news_item["sent_at"] else datetime.now(),
+                sentiment="neutral",
+                sentiment_score=0.0,
+                tickers=[],
+                category="general"
+            ))
+        
+        return NewsResponse(
+            articles=articles,
+            total=len(news_data),
+            page=page,
+            page_size=page_size
+        )
+    except Exception as e:
+        # 에러 발생 시 빈 결과 반환
+        print(f"❌ 뉴스 조회 에러: {e}")
+        return NewsResponse(
+            articles=[],
+            total=0,
+            page=page,
+            page_size=page_size
+        )
 
 @router.get("/{news_id}", response_model=NewsArticle)
 async def get_news_detail(news_id: str):

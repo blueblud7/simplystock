@@ -351,5 +351,249 @@ celery -A app.tasks beat --loglevel=info
 
 ---
 
+## 8️⃣ 52주 신고가/신저가 API
+
+### 📊 데이터 소스
+
+**분석 대상:**
+- **S&P 500**: 미국 대형주 500개 종목 (Wikipedia API)
+- **NASDAQ 100**: 나스닥 상장 대형 기술주 100개 (Wikipedia API)
+- **추가 주요 종목**: Russell, Dow Jones 등에서 선별한 60개
+- **총 분석 대상**: 약 600개 종목 (중복 제거 후 실제 수집: ~200개)
+
+**업데이트 주기:**
+- 자동 갱신: 15분마다
+- 수동 갱신: `POST /api/52week/refresh`
+
+### API 엔드포인트
+
+#### 1. 52주 신고가 종목 조회
+```http
+GET /api/52week/highs?limit=20&market_cap=Mega
+```
+
+**Parameters:**
+- `limit` (int): 반환할 종목 수 (기본 20, 최대 100)
+- `market_cap` (string, optional): 시총 필터
+  - `Mega`: 대형주 (시총 200B$ 이상)
+  - `Large`: 대형주 (시총 10B$ ~ 200B$)
+  - `Mid`: 중형주 (시총 2B$ ~ 10B$)
+  - `Small`: 소형주 (시총 2B$ 미만)
+
+**Response:**
+```json
+{
+  "stocks": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "price": 272.41,
+      "high_52week": 277.32,
+      "change": -0.54,
+      "change_percent": -0.2,
+      "sector": "Technology",
+      "market_cap": 4.03,
+      "market_cap_category": "대형주 (Mega Cap)"
+    }
+  ],
+  "total": 16
+}
+```
+
+#### 2. 52주 신저가 종목 조회
+```http
+GET /api/52week/lows?limit=20&market_cap=Large
+```
+
+동일한 파라미터와 응답 구조
+
+#### 3. 전체 통계
+```http
+GET /api/52week/stats
+```
+
+**Response:**
+```json
+{
+  "highs_count": 16,
+  "lows_count": 8,
+  "ratio": 2.0,
+  "market_breadth": "positive",
+  "total_stocks": 166,
+  "last_update": "2025-11-14T20:48:50.974435"
+}
+```
+
+**Market Breadth 분류:**
+- `strong`: ratio > 2.5 (매우 강세)
+- `positive`: ratio > 1.5 (긍정적)
+- `neutral`: ratio > 0.7 (중립)
+- `weak`: ratio ≤ 0.7 (약세)
+
+#### 4. 시총별 통계
+```http
+GET /api/52week/stats/by-market-cap
+```
+
+**Response:**
+```json
+[
+  {
+    "category": "대형주 (Mega Cap)",
+    "highs_count": 5,
+    "lows_count": 1,
+    "ratio": 5.0,
+    "total_stocks": 50
+  },
+  {
+    "category": "대형주 (Large Cap)",
+    "highs_count": 11,
+    "lows_count": 7,
+    "ratio": 1.57,
+    "total_stocks": 116
+  }
+]
+```
+
+#### 5. 52주 신고가/신저가 추이 (히스토리)
+```http
+GET /api/52week/history?days=30
+```
+
+**Parameters:**
+- `days` (int): 조회할 일수 (기본 30일, 최대 365일)
+
+**Response:**
+```json
+{
+  "history": [
+    {
+      "date": "2025-11-08",
+      "highs_count": 18,
+      "lows_count": 9,
+      "ratio": 2.0,
+      "market_breadth": "positive"
+    },
+    {
+      "date": "2025-11-09",
+      "highs_count": 16,
+      "lows_count": 8,
+      "ratio": 2.0,
+      "market_breadth": "positive"
+    }
+  ],
+  "days": 30,
+  "note": "현재는 추정 데이터입니다. 실제 히스토리 추적을 위해서는 매일 데이터를 DB에 저장해야 합니다."
+}
+```
+
+#### 6. 등락 종목 수 (Advance/Decline)
+```http
+GET /api/52week/advance-decline
+```
+
+**Response:**
+```json
+{
+  "advancing": 66,
+  "declining": 100,
+  "unchanged": 0,
+  "total_stocks": 166,
+  "ad_ratio": 0.66,
+  "market_sentiment": "약세",
+  "timestamp": "2025-11-14T20:53:54.747975",
+  "note": "총 166개 종목 중 상승 66개, 하락 100개"
+}
+```
+
+**Market Sentiment 분류:**
+- `매우 강세`: ratio > 2
+- `강세`: ratio > 1.5
+- `약한 강세`: ratio > 1
+- `약한 약세`: ratio > 0.67
+- `약세`: ratio > 0.5
+- `매우 약세`: ratio ≤ 0.5
+
+#### 7. 시장 상태 확인
+```http
+GET /api/52week/market-status
+```
+
+**캘리포니아 시간대 기준으로:**
+- 주말 여부 체크 (토요일, 일요일)
+- 미국 공휴일 여부 체크 (New Year's, MLK Day, Presidents Day, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas)
+- 시장 시간 체크 (06:30-13:00 PST/PDT)
+- 직전 거래일 자동 계산
+
+**Response (시장 마감 시):**
+```json
+{
+  "is_open": false,
+  "date": "2025-11-13",
+  "message": "시장 마감 - 직전 거래일 (2025-11-13) 데이터 표시",
+  "california_time": "2025-11-14 21:04:19 PST"
+}
+```
+
+**Response (주말 시):**
+```json
+{
+  "is_open": false,
+  "date": "2025-11-14",
+  "message": "주말 - 직전 거래일 (2025-11-14) 데이터 표시",
+  "california_time": "2025-11-16 10:00:00 PST"
+}
+```
+
+**Response (시장 개장 중):**
+```json
+{
+  "is_open": true,
+  "date": "2025-11-17",
+  "message": "시장 개장 중",
+  "california_time": "2025-11-17 09:00:00 PST"
+}
+```
+
+#### 8. 캐시 강제 새로고침
+```http
+POST /api/52week/refresh
+```
+
+**Response:**
+```json
+{
+  "message": "캐시 업데이트 시작",
+  "status": "updating",
+  "estimated_time": "30-60초",
+  "target_stocks": "S&P 500 + NASDAQ 100 + 추가 주요 종목"
+}
+```
+
+### 💡 활용 팁
+
+1. **시총별 분석**: 대형주, 중형주, 소형주별로 시장 상황을 다르게 파악할 수 있습니다.
+2. **히스토리 추적**: 30일 추이를 통해 시장 모멘텀 변화를 감지할 수 있습니다.
+3. **Advance/Decline**: 당일 등락 종목 수로 단기 시장 심리를 파악할 수 있습니다.
+4. **52주 신고가/신저가 비율**: 시장 브레드스(Market Breadth)의 핵심 지표입니다.
+5. **시장 상태 체크**: 주말이나 공휴일에는 자동으로 직전 거래일 데이터를 표시합니다.
+
+### 🕒 시장 시간 (캘리포니아 기준)
+
+**개장 시간:**
+- 월요일 ~ 금요일: 06:30 - 13:00 (PST/PDT)
+- 동부 시간: 09:30 - 16:00 (EST/EDT)
+
+**휴장일:**
+- 주말 (토요일, 일요일)
+- 미국 공휴일 (New Year's Day, MLK Day, Presidents Day, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas)
+
+**직전 거래일 처리:**
+- 주말/공휴일에 접속하면 자동으로 직전 거래일 데이터를 표시
+- `market_status` 필드에서 현재 상태 확인 가능
+- UI에 "직전 거래일 (2025-11-14) 데이터" 같은 안내 표시 가능
+
+---
+
 **질문이 있으시면 언제든 물어보세요!** 🚀
 

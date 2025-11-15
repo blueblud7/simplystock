@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from app.api import market, sectors, week52, macro, news, portfolio
+from app.api import market, sectors, week52, macro, news, portfolio, reports
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,7 +25,7 @@ app = FastAPI(
 )
 
 # CORS 설정
-origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:4000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,6 +41,7 @@ app.include_router(sectors.router, prefix="/api/sectors", tags=["Sectors"])
 app.include_router(week52.router, prefix="/api/52week", tags=["52 Week High/Low"])
 app.include_router(macro.router, prefix="/api/macro", tags=["Macro Indicators"])
 app.include_router(news.router, prefix="/api/news", tags=["News"])
+app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
 
 @app.get("/")

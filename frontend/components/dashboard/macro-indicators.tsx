@@ -3,55 +3,99 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, DollarSign, TrendingUp, Globe } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
-// 임시 데이터
-const macroData = [
-  {
-    name: "CNN Fear & Greed",
-    value: 65,
-    label: "Greed",
-    icon: Activity,
-    color: "text-success",
-    bgColor: "bg-success/10",
-  },
-  {
-    name: "M2 통화량",
-    value: 21.2,
-    label: "조 달러",
-    icon: DollarSign,
-    color: "text-blue-500",
-    bgColor: "bg-blue-500/10",
-  },
-  {
-    name: "연준 기준금리",
-    value: 5.5,
-    label: "%",
-    icon: TrendingUp,
-    color: "text-orange-500",
-    bgColor: "bg-orange-500/10",
-  },
-  {
-    name: "VIX 지수",
-    value: 13.8,
-    label: "Low",
-    icon: Globe,
-    color: "text-purple-500",
-    bgColor: "bg-purple-500/10",
-  },
-];
+interface MacroData {
+  fear_greed: { value: number; label: string };
+  m2: { value: number; unit: string };
+  fed_funds_rate: { value: number; unit: string };
+  vix: { value: number; status: string };
+}
 
 export function MacroIndicators() {
+  const [macroData, setMacroData] = useState<MacroData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchMacroData = async () => {
+      try {
+        const response = await fetch("http://localhost:8001/api/macro/overview");
+        const data = await response.json();
+        setMacroData(data.indicators || null);
+      } catch (error) {
+        console.error("Failed to fetch macro data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMacroData();
+  }, []);
+
+  if (loading || !macroData) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>매크로 지표</CardTitle>
+          <CardDescription>
+            주요 거시경제 지표를 실시간으로 모니터링하세요
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-32">
+            <p className="text-muted-foreground">로딩 중...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const indicators = [
+    {
+      name: "CNN Fear & Greed",
+      value: macroData.fear_greed.value,
+      label: macroData.fear_greed.label,
+      icon: Activity,
+      color: "text-success",
+      bgColor: "bg-success/10",
+    },
+    {
+      name: "M2 통화량",
+      value: macroData.m2.value,
+      label: "조 달러",
+      icon: DollarSign,
+      color: "text-blue-500",
+      bgColor: "bg-blue-500/10",
+    },
+    {
+      name: "연준 기준금리",
+      value: macroData.fed_funds_rate.value,
+      label: "%",
+      icon: TrendingUp,
+      color: "text-orange-500",
+      bgColor: "bg-orange-500/10",
+    },
+    {
+      name: "VIX 지수",
+      value: macroData.vix.value,
+      label: macroData.vix.status,
+      icon: Globe,
+      color: "text-purple-500",
+      bgColor: "bg-purple-500/10",
+    },
+  ];
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>매크로 지표</CardTitle>
         <CardDescription>
-          주요 거시경제 지표를 실시간으로 모니터링하세요
+          실시간 경제 지표 (FRED API & yfinance)
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {macroData.map((item) => {
+          {indicators.map((item) => {
             const Icon = item.icon;
             
             return (
@@ -80,4 +124,3 @@ export function MacroIndicators() {
     </Card>
   );
 }
-

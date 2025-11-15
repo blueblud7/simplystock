@@ -1,34 +1,105 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from "recharts";
 
-// 임시 히스토리 데이터
-const fearGreedData = Array.from({ length: 30 }, (_, i) => ({
-  date: `${i + 1}일`,
-  value: 50 + Math.random() * 30 - 10,
-}));
+interface FearGreedData {
+  date: string;
+  value: number;
+}
 
-const interestRateData = Array.from({ length: 12 }, (_, i) => ({
-  date: `${i + 1}월`,
-  "연준 기준금리": 5.5 - (i * 0.1),
-  "10년물": 4.5 - (i * 0.08),
-  "2년물": 4.8 - (i * 0.09),
-}));
+interface InterestRateData {
+  date: string;
+  "연준 기준금리": number | null;
+  "10년물": number | null;
+  "2년물": number | null;
+}
 
-const vixData = Array.from({ length: 30 }, (_, i) => ({
-  date: `${i + 1}일`,
-  VIX: 15 + Math.random() * 10 - 5,
-}));
+interface VixData {
+  date: string;
+  VIX: number;
+}
 
-const exchangeRateData = Array.from({ length: 30 }, (_, i) => ({
-  date: `${i + 1}일`,
-  "USD/KRW": 1300 + Math.random() * 20,
-  "DXY": 104 + Math.random() * 2,
-}));
+interface ExchangeRateData {
+  date: string;
+  "USD/KRW": number | null;
+  "DXY": number | null;
+}
 
 export function MacroChart() {
+  const [fearGreedData, setFearGreedData] = useState<FearGreedData[]>([]);
+  const [interestRateData, setInterestRateData] = useState<InterestRateData[]>([]);
+  const [vixData, setVixData] = useState<VixData[]>([]);
+  const [exchangeRateData, setExchangeRateData] = useState<ExchangeRateData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fear & Greed Index
+        const fearGreedRes = await fetch("http://localhost:8001/api/macro/history/fear-greed?days=30");
+        const fearGreedJson = await fearGreedRes.json();
+        if (fearGreedJson.history) {
+          setFearGreedData(fearGreedJson.history.map((item: any) => ({
+            date: item.date,
+            value: item.value
+          })));
+        }
+
+        // Interest Rates
+        const interestRes = await fetch("http://localhost:8001/api/macro/history/interest-rates?months=12");
+        const interestJson = await interestRes.json();
+        if (interestJson.history) {
+          setInterestRateData(interestJson.history.map((item: any) => ({
+            date: item.date,
+            "연준 기준금리": item.fed_funds_rate,
+            "10년물": item.treasury_10y,
+            "2년물": item.treasury_2y
+          })));
+        }
+
+        // VIX
+        const vixRes = await fetch("http://localhost:8001/api/macro/history/vix?days=30");
+        const vixJson = await vixRes.json();
+        if (vixJson.history) {
+          setVixData(vixJson.history.map((item: any) => ({
+            date: item.date,
+            VIX: item.value
+          })));
+        }
+
+        // Exchange Rates
+        const exchangeRes = await fetch("http://localhost:8001/api/macro/history/exchange-rates?days=30");
+        const exchangeJson = await exchangeRes.json();
+        if (exchangeJson.history) {
+          setExchangeRateData(exchangeJson.history.map((item: any) => ({
+            date: item.date,
+            "USD/KRW": item.usd_krw,
+            "DXY": item.dxy
+          })));
+        }
+      } catch (error) {
+        console.error("Failed to fetch macro history:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">차트 데이터 로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Tabs defaultValue="fear-greed" className="w-full">
       <TabsList className="grid w-full grid-cols-4">

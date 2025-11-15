@@ -3,40 +3,57 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { formatNumber, formatPercent } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
-// 임시 데이터 (추후 API 연동)
-const marketData = [
-  {
-    name: "S&P 500",
-    symbol: "SPX",
-    price: 4783.45,
-    change: 1.24,
-    changePercent: 0.026,
-  },
-  {
-    name: "NASDAQ",
-    symbol: "IXIC",
-    price: 15095.14,
-    change: 45.32,
-    changePercent: 0.301,
-  },
-  {
-    name: "KOSPI",
-    symbol: "KS11",
-    price: 2594.35,
-    change: -8.45,
-    changePercent: -0.325,
-  },
-  {
-    name: "USD/KRW",
-    symbol: "USDKRW",
-    price: 1308.50,
-    change: 2.30,
-    changePercent: 0.176,
-  },
-];
+interface MarketIndex {
+  name: string;
+  symbol: string;
+  price: number;
+  change: number;
+  change_percent: number;
+}
 
 export function MarketOverview() {
+  const [marketData, setMarketData] = useState<MarketIndex[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchMarketData = async () => {
+      try {
+        const response = await fetch("http://localhost:8001/api/market/overview");
+        const data = await response.json();
+        setMarketData(data.indices || []);
+      } catch (error) {
+        console.error("Failed to fetch market data:", error);
+        setMarketData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMarketData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="h-8 w-32 bg-muted animate-pulse rounded" />
+                <div className="h-3 w-16 bg-muted animate-pulse rounded" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {marketData.map((item) => {
@@ -58,7 +75,7 @@ export function MarketOverview() {
                 {formatNumber(item.price)}
               </div>
               <p className={`text-xs ${isPositive ? 'text-success' : isNegative ? 'text-danger' : 'text-muted-foreground'}`}>
-                {formatPercent(item.changePercent)} ({isPositive ? '+' : ''}{formatNumber(item.change)})
+                {formatPercent(item.change_percent)} ({isPositive ? '+' : ''}{formatNumber(item.change)})
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 {item.symbol}
@@ -70,4 +87,3 @@ export function MarketOverview() {
     </div>
   );
 }
-
