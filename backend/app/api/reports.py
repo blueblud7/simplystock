@@ -16,6 +16,8 @@ class StockInfo(BaseModel):
     name: str
     recommendation: Optional[str] = None
     upside: Optional[float] = None
+    adjustment_type: Optional[str] = None  # 조정 유형: 상향/하향/유지
+    profit_impact: Optional[str] = None    # 수익 영향: 양호/보통/부진
 
 class Report(BaseModel):
     id: int
@@ -25,6 +27,7 @@ class Report(BaseModel):
     pdf_url: Optional[str] = None
     sent: bool
     stocks: List[StockInfo] = []
+    summary: Optional[str] = None  # 요약 내용
 
 class ReportAnalysis(BaseModel):
     id: int
@@ -239,7 +242,7 @@ async def get_report_detail(report_id: int):
         
         with get_reports_db() as session:
             query = """
-                SELECT id, date, category, title, pdf_url, sent
+                SELECT id, date, category, title, file_path, pdf_url, sent
                 FROM sent_reports
                 WHERE id = :report_id
             """
@@ -253,8 +256,9 @@ async def get_report_detail(report_id: int):
                 "date": result[1],
                 "category": result[2],
                 "title": result[3],
-                "pdf_url": result[4],
-                "sent": bool(result[5])
+                "file_path": result[4],
+                "pdf_url": result[5],
+                "sent": bool(result[6])
             }
         
         # 해당 리포트의 종목 분석
@@ -269,6 +273,11 @@ async def get_report_detail(report_id: int):
                     analysis["upside_percent"] = round(
                         ((target - current) / current) * 100, 2
                     )
+        
+        # 요약 파일 읽기
+        summary = ExternalDataService.read_summary_file(report.get("file_path"))
+        if summary:
+            report["summary"] = summary
         
         return {
             "report": report,

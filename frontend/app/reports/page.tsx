@@ -7,10 +7,44 @@ import { formatNumber, formatPercent } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { ReportDetailModal } from "@/components/reports/report-detail-modal";
 
+// 리포트 날짜 포맷팅 함수 (YY.MM.DD 형식 처리)
+function formatReportDate(dateStr: string): string {
+  if (!dateStr) return "날짜 없음";
+  
+  try {
+    // YY.MM.DD 형식 처리 (예: "25.05.21")
+    if (dateStr.includes('.')) {
+      const parts = dateStr.split('.');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]);
+        const day = parseInt(parts[2]);
+        
+        // 20XX 또는 19XX로 변환 (YY가 50 이상이면 1900년대, 아니면 2000년대)
+        const fullYear = year >= 50 ? 1900 + year : 2000 + year;
+        
+        return `${fullYear}. ${month}. ${day}.`;
+      }
+    }
+    
+    // ISO 형식이나 다른 형식 시도
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleDateString('ko-KR');
+    }
+    
+    return dateStr; // 파싱 실패 시 원본 반환
+  } catch (e) {
+    return dateStr; // 에러 시 원본 반환
+  }
+}
+
 interface StockInfo {
   name: string;
   recommendation?: string;
   upside?: number;
+  adjustment_type?: string;  // 조정 유형: 상향/하향/유지
+  profit_impact?: string;    // 수익 영향: 양호/보통/부진
 }
 
 interface Report {
@@ -21,6 +55,7 @@ interface Report {
   pdf_url?: string;
   sent: boolean;
   stocks?: StockInfo[];
+  summary?: string;  // 요약 내용
 }
 
 interface ReportAnalysis {
@@ -304,41 +339,73 @@ export default function ReportsPage() {
                         <div className="flex items-center space-x-2 mb-1">
                           <Calendar className="h-4 w-4 text-muted-foreground" />
                           <span className="text-sm text-muted-foreground">
-                            {new Date(report.date).toLocaleDateString('ko-KR')}
+                            {formatReportDate(report.date)}
                           </span>
                           <Tag className="h-4 w-4 text-muted-foreground" />
                           <span className="text-sm text-muted-foreground">{report.category}</span>
                         </div>
                         <h4 className="font-semibold">{report.title}</h4>
                         
+                        {/* 요약 내용 표시 */}
+                        {report.summary && (
+                          <p className="text-sm text-muted-foreground mt-2 line-clamp-3">
+                            {report.summary}
+                          </p>
+                        )}
+                        
                         {/* 분석 종목 정보 표시 */}
                         {report.stocks && report.stocks.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {report.stocks.map((stock, idx) => (
-                              <div key={idx} className="flex items-center space-x-1 px-2 py-1 bg-blue-500/10 text-blue-500 rounded text-xs">
-                                <span className="font-medium">{stock.name}</span>
-                                {stock.recommendation && (
-                                  <>
-                                    <span>•</span>
-                                    <span className={`${
-                                      stock.recommendation === 'BUY' ? 'text-success' : 
-                                      stock.recommendation === 'SELL' ? 'text-danger' : 
+                          <div className="mt-3 space-y-2">
+                            {/* 요약 문구 */}
+                            <p className="text-sm text-muted-foreground">
+                              {report.stocks.map((stock, idx) => (
+                                <span key={idx}>
+                                  {idx > 0 && ', '}
+                                  <span className="font-medium text-foreground">{stock.name}</span>
+                                  {stock.adjustment_type && (
+                                    <span> 목표가 {stock.adjustment_type}</span>
+                                  )}
+                                  {stock.profit_impact && (
+                                    <span className={`ml-1 ${
+                                      stock.profit_impact === '양호' ? 'text-success' : 
+                                      stock.profit_impact === '부진' ? 'text-danger' : 
                                       'text-muted-foreground'
                                     }`}>
-                                      {stock.recommendation}
+                                      (수익 {stock.profit_impact})
                                     </span>
-                                  </>
-                                )}
-                                {stock.upside !== undefined && (
-                                  <>
-                                    <span>•</span>
-                                    <span className={stock.upside > 0 ? 'text-success' : 'text-danger'}>
-                                      {stock.upside > 0 ? '+' : ''}{stock.upside.toFixed(1)}%
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            ))}
+                                  )}
+                                </span>
+                              ))}
+                            </p>
+                            
+                            {/* 종목 뱃지 */}
+                            <div className="flex flex-wrap gap-2">
+                              {report.stocks.map((stock, idx) => (
+                                <div key={idx} className="flex items-center space-x-1 px-2 py-1 bg-blue-500/10 text-blue-500 rounded text-xs">
+                                  <span className="font-medium">{stock.name}</span>
+                                  {stock.recommendation && (
+                                    <>
+                                      <span>•</span>
+                                      <span className={`${
+                                        stock.recommendation === 'BUY' ? 'text-success' : 
+                                        stock.recommendation === 'SELL' ? 'text-danger' : 
+                                        'text-muted-foreground'
+                                      }`}>
+                                        {stock.recommendation}
+                                      </span>
+                                    </>
+                                  )}
+                                  {stock.upside !== undefined && (
+                                    <>
+                                      <span>•</span>
+                                      <span className={stock.upside > 0 ? 'text-success' : 'text-danger'}>
+                                        {stock.upside > 0 ? '+' : ''}{stock.upside.toFixed(1)}%
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>

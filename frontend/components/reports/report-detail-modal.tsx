@@ -11,6 +11,38 @@ import { formatNumber, formatPercent } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus, Calendar, Tag, Building2, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 
+// 리포트 날짜 포맷팅 함수 (YY.MM.DD 형식 처리)
+function formatReportDate(dateStr: string): string {
+  if (!dateStr) return "날짜 없음";
+  
+  try {
+    // YY.MM.DD 형식 처리 (예: "25.05.21")
+    if (dateStr.includes('.')) {
+      const parts = dateStr.split('.');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]);
+        const day = parseInt(parts[2]);
+        
+        // 20XX 또는 19XX로 변환 (YY가 50 이상이면 1900년대, 아니면 2000년대)
+        const fullYear = year >= 50 ? 1900 + year : 2000 + year;
+        
+        return `${fullYear}. ${month}. ${day}.`;
+      }
+    }
+    
+    // ISO 형식이나 다른 형식 시도
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleDateString('ko-KR');
+    }
+    
+    return dateStr; // 파싱 실패 시 원본 반환
+  } catch (e) {
+    return dateStr; // 에러 시 원본 반환
+  }
+}
+
 interface StockAnalysis {
   id: number;
   stock_code: string;
@@ -29,6 +61,7 @@ interface Report {
   date: string;
   category: string;
   title: string;
+  summary?: string;
 }
 
 interface ReportDetailModalProps {
@@ -107,7 +140,7 @@ export function ReportDetailModal({ reportId, isOpen, onClose }: ReportDetailMod
                 <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground font-normal">
                   <div className="flex items-center gap-1">
                     <Calendar className="h-4 w-4" />
-                    {new Date(report.date).toLocaleDateString('ko-KR')}
+                    {formatReportDate(report.date)}
                   </div>
                   <div className="flex items-center gap-1">
                     <Tag className="h-4 w-4" />
@@ -131,6 +164,38 @@ export function ReportDetailModal({ reportId, isOpen, onClose }: ReportDetailMod
           </div>
         ) : (
           <div className="space-y-4 mt-4">
+            {/* 요약 내용 전체 표시 */}
+            {report?.summary && (
+              <div className="rounded-lg border p-4 bg-muted/30">
+                <div className="flex items-start gap-2 mb-3">
+                  <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <h3 className="font-semibold text-lg">요약 내용</h3>
+                </div>
+                <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed max-h-[400px] overflow-y-auto">
+                  {report.summary.split('\n').map((line, idx) => {
+                    // 불릿 포인트나 번호가 있는 줄 처리
+                    if (line.trim().match(/^[-•*]\s/) || line.trim().match(/^\d+\.\s/)) {
+                      return (
+                        <div key={idx} className="mb-2 pl-4">
+                          {line.trim()}
+                        </div>
+                      );
+                    }
+                    // 일반 텍스트 줄
+                    if (line.trim()) {
+                      return (
+                        <p key={idx} className="mb-2">
+                          {line.trim()}
+                        </p>
+                      );
+                    }
+                    // 빈 줄
+                    return <br key={idx} />;
+                  })}
+                </div>
+              </div>
+            )}
+            
             {analyses.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
