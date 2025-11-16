@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatNumber, formatPercent } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Minus, Calendar, Tag, Building2, FileText } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Calendar, Tag, Building2, FileText, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 
 // 리포트 날짜 포맷팅 함수 (YY.MM.DD 형식 처리)
@@ -62,6 +62,7 @@ interface Report {
   category: string;
   title: string;
   summary?: string;
+  pdf_url?: string;
 }
 
 interface ReportDetailModalProps {
@@ -167,9 +168,23 @@ export function ReportDetailModal({ reportId, isOpen, onClose }: ReportDetailMod
             {/* 요약 내용 전체 표시 */}
             {report?.summary && (
               <div className="rounded-lg border p-4 bg-muted/30">
-                <div className="flex items-start gap-2 mb-3">
-                  <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <h3 className="font-semibold text-lg">요약 내용</h3>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start gap-2">
+                    <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                    <h3 className="font-semibold text-lg">요약 내용</h3>
+                  </div>
+                  {report?.pdf_url && (
+                    <a
+                      href={report.pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-sm text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      네이버에서 리포트 보기
+                    </a>
+                  )}
                 </div>
                 <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed max-h-[400px] overflow-y-auto">
                   {report.summary.split('\n').map((line, idx) => {
@@ -193,6 +208,21 @@ export function ReportDetailModal({ reportId, isOpen, onClose }: ReportDetailMod
                     return <br key={idx} />;
                   })}
                 </div>
+              </div>
+            )}
+            
+            {/* 네이버 링크 (요약이 없을 때도 표시) */}
+            {!report?.summary && report?.pdf_url && (
+              <div className="rounded-lg border p-4 bg-muted/30">
+                <a
+                  href={report.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-primary hover:underline"
+                >
+                  <ExternalLink className="h-5 w-5" />
+                  <span className="font-semibold">네이버 금융에서 리포트 보기</span>
+                </a>
               </div>
             )}
             

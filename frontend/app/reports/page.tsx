@@ -333,7 +333,7 @@ export default function ReportsPage() {
                     <div
                       key={report.id}
                       onClick={() => handleReportClick(report.id)}
-                      className="flex items-center justify-between rounded-lg border p-4 hover:bg-accent transition-colors cursor-pointer"
+                      className="rounded-lg border p-4 hover:bg-accent transition-colors cursor-pointer"
                     >
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
@@ -409,16 +409,21 @@ export default function ReportsPage() {
                           </div>
                         )}
                       </div>
+                      
+                      {/* 네이버 링크 (카드 하단) */}
                       {report.pdf_url && (
-                        <a
-                          href={report.pdf_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-4 flex items-center text-sm text-primary hover:underline"
-                        >
-                          <ExternalLink className="h-4 w-4 mr-1" />
-                          PDF
-                        </a>
+                        <div className="mt-4 pt-4 border-t">
+                          <a
+                            href={report.pdf_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-2 text-sm text-primary hover:underline"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            <span>네이버 금융에서 리포트 보기</span>
+                          </a>
+                        </div>
                       )}
                     </div>
                   ))}
