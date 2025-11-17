@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from app.api import market, sectors, week52, macro, news, portfolio, reports
+from app.api import market, sectors, week52, macro, news, portfolio, reports, stocks
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,6 +42,7 @@ app.include_router(week52.router, prefix="/api/52week", tags=["52 Week High/Low"
 app.include_router(macro.router, prefix="/api/macro", tags=["Macro Indicators"])
 app.include_router(news.router, prefix="/api/news", tags=["News"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
+app.include_router(stocks.router, prefix="/api/stocks", tags=["Stocks"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
 
 @app.get("/")
