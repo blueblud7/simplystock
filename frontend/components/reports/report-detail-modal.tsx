@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatNumber, formatPercent } from "@/lib/utils";
+import { getApiUrl } from "@/lib/api";
 import { TrendingUp, TrendingDown, Minus, Calendar, Tag, Building2, FileText, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -87,13 +88,18 @@ export function ReportDetailModal({ reportId, isOpen, onClose }: ReportDetailMod
     
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8001/api/reports/${reportId}`);
+      const response = await fetch(getApiUrl(`/api/reports/${reportId}`));
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
       
       setReport(data.report);
       setAnalyses(data.analyses || []);
     } catch (error) {
       console.error("Failed to fetch report detail:", error);
+      setReport(null);
+      setAnalyses([]);
     } finally {
       setLoading(false);
     }
@@ -248,7 +254,7 @@ export function ReportDetailModal({ reportId, isOpen, onClose }: ReportDetailMod
                   <div className="text-center">
                     <p className="text-sm text-muted-foreground mb-1">평균 상승률</p>
                     <p className="text-2xl font-bold text-blue-500">
-                      +{formatPercent(
+                      {formatPercent(
                         analyses.reduce((sum, a) => sum + (a.upside_percent || 0), 0) / analyses.length
                       )}
                     </p>

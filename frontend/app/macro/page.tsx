@@ -1,10 +1,15 @@
 "use client";
 
+// 동적 렌더링 강제 (캐시 방지)
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MacroChart } from "@/components/charts/macro-chart";
 import { Activity, DollarSign, TrendingUp, Globe, Zap, ArrowUpDown } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
+import { getApiUrl } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 interface MacroData {
@@ -36,6 +41,20 @@ interface MacroData {
       status: string;
       timestamp: string;
     };
+    usd_krw?: {
+      name: string;
+      value: number;
+      change: number;
+      unit: string;
+      timestamp: string;
+    };
+    dxy?: {
+      name: string;
+      value: number;
+      change: number;
+      unit: string;
+      timestamp: string;
+    };
   };
   last_update?: string;
   next_update?: string;
@@ -46,31 +65,64 @@ export default function MacroPage() {
   const [interestRates, setInterestRates] = useState<any>(null);
   const [exchangeRates, setExchangeRates] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0); // 강제 리렌더링용
 
   useEffect(() => {
     const fetchMacroData = async () => {
       try {
+        // 완전한 캐시 무효화를 위한 옵션
+        const timestamp = Date.now();
+        const cacheOptions: RequestInit = {
+          cache: 'no-store',
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'X-Request-Time': timestamp.toString(),
+          },
+        };
+
         const [macroRes, ratesRes, exchangeRes] = await Promise.all([
-          fetch("http://localhost:8001/api/macro/overview"),
-          fetch("http://localhost:8001/api/macro/interest-rates"),
-          fetch("http://localhost:8001/api/macro/exchange-rates"),
+          fetch(getApiUrl("/api/macro/overview") + `?force_refresh=true&t=${timestamp}&_=${Math.random()}`, cacheOptions),
+          fetch(getApiUrl("/api/macro/interest-rates") + `?t=${timestamp}&_=${Math.random()}`, cacheOptions),
+          fetch(getApiUrl("/api/macro/exchange-rates") + `?t=${timestamp}&_=${Math.random()}`, cacheOptions),
         ]);
+        
+        if (!macroRes.ok || !ratesRes.ok || !exchangeRes.ok) {
+          throw new Error(`HTTP error! macro: ${macroRes.status}, rates: ${ratesRes.status}, exchange: ${exchangeRes.status}`);
+        }
+        
         const macroJson = await macroRes.json();
         const ratesJson = await ratesRes.json();
         const exchangeJson = await exchangeRes.json();
 
+        console.log("🔄 매크로 데이터 업데이트:", {
+          fear_greed_value: macroJson.indicators?.fear_greed?.value,
+          timestamp: new Date().toISOString()
+        });
+        
         setMacroData(macroJson);
         setInterestRates(ratesJson);
         setExchangeRates(exchangeJson);
       } catch (error) {
-        console.error("Failed to fetch macro data:", error);
+        console.error("❌ Failed to fetch macro data:", error);
       } finally {
         setLoading(false);
       }
     };
 
+    // 즉시 실행
     fetchMacroData();
-  }, []);
+    
+    // 30초마다 자동 갱신 (더 자주 업데이트)
+    const interval = setInterval(() => {
+      console.log("🔄 자동 갱신 실행...");
+      fetchMacroData();
+    }, 30 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [refreshKey]); // refreshKey가 변경되면 다시 실행
 
   if (loading) {
     return (
@@ -205,6 +257,51 @@ export default function MacroPage() {
       status: "positive"
     },
   ];
+
+  // 환율 지표 추가
+  if (macroData.indicators.usd_krw) {
+    macroIndicators.push({
+      id: "usd-krw",
+      name: macroData.indicators.usd_krw.name,
+      value: macroData.indicators.usd_krw.value,
+      label: macroData.indicators.usd_krw.unit,
+      icon: Globe,
+      color: macroData.indicators.usd_krw.change > 0 ? "text-danger" : "text-success",
+      bgColor: macroData.indicators.usd_krw.change > 0 ? "bg-danger/10" : "bg-success/10",
+      description: "원달러 환율",
+      interpretation: `현재 원달러 환율은 ${macroData.indicators.usd_krw.value}원입니다. ${
+        macroData.indicators.usd_krw.change > 0
+        ? "원화 약세로 수입 물가 상승 압력이 있습니다."
+        : macroData.indicators.usd_krw.change < 0
+        ? "원화 강세로 수출 경쟁력이 약화될 수 있습니다."
+        : "환율이 안정적으로 유지되고 있습니다."
+      }`,
+      change: macroData.indicators.usd_krw.change,
+      status: "neutral"
+    });
+  }
+
+  if (macroData.indicators.dxy) {
+    macroIndicators.push({
+      id: "dxy",
+      name: macroData.indicators.dxy.name,
+      value: macroData.indicators.dxy.value,
+      label: macroData.indicators.dxy.unit,
+      icon: ArrowUpDown,
+      color: macroData.indicators.dxy.change > 0 ? "text-danger" : "text-success",
+      bgColor: macroData.indicators.dxy.change > 0 ? "bg-danger/10" : "bg-success/10",
+      description: "달러 강세 지수",
+      interpretation: `DXY는 ${macroData.indicators.dxy.value}입니다. ${
+        macroData.indicators.dxy.change > 0
+        ? "달러 강세 지속으로 신흥국 자본 유출 압력이 있습니다."
+        : macroData.indicators.dxy.change < 0
+        ? "달러 약세로 신흥국 자산에 유리합니다."
+        : "달러 지수가 안정적으로 유지되고 있습니다."
+      }`,
+      change: macroData.indicators.dxy.change,
+      status: "neutral"
+    });
+  }
     return (
       <div className="space-y-6">
         {/* 헤더 */}
@@ -215,17 +312,29 @@ export default function MacroPage() {
               거시경제 지표를 통해 시장 환경을 분석합니다
             </p>
           </div>
-          {lastUpdate && (
-            <div className="text-sm text-muted-foreground text-right">
-              <p>마지막 업데이트</p>
-              <p className="font-semibold">{lastUpdate}</p>
-              <p className="text-xs mt-1">매일 06:30 PST 자동 갱신</p>
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            {lastUpdate && (
+              <div className="text-sm text-muted-foreground text-right">
+                <p>마지막 업데이트</p>
+                <p className="font-semibold">{lastUpdate}</p>
+                <p className="text-xs mt-1">30초마다 자동 갱신</p>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                console.log("🔄 수동 새로고침 클릭");
+                setRefreshKey(prev => prev + 1);
+                setLoading(true);
+              }}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              새로고침
+            </button>
+          </div>
         </div>
 
       {/* 주요 지표 그리드 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {macroIndicators.map((indicator) => {
           const Icon = indicator.icon;
           
@@ -272,28 +381,64 @@ export default function MacroPage() {
           <CardTitle>CNN Fear & Greed Index</CardTitle>
           <CardDescription>
             시장 심리를 0(극도의 공포) ~ 100(극도의 탐욕) 척도로 표시
+            {macroData.indicators.fear_greed.timestamp && (
+              <span className="ml-2 text-xs">
+                (업데이트: {new Date(macroData.indicators.fear_greed.timestamp).toLocaleString('ko-KR')})
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {/* 현재 값 표시 */}
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="text-3xl font-bold">
+                  {macroData.indicators.fear_greed.value}
+                </div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {macroData.indicators.fear_greed.label || "Neutral"}
+                </div>
+              </div>
+              <div className={`px-4 py-2 rounded-lg ${
+                macroData.indicators.fear_greed.value > 60 
+                  ? "bg-success/10 text-success" 
+                  : macroData.indicators.fear_greed.value < 40 
+                  ? "bg-danger/10 text-danger" 
+                  : "bg-orange-500/10 text-orange-500"
+              }`}>
+                <div className="text-sm font-semibold">
+                  {macroData.indicators.fear_greed.value > 70 
+                    ? "극도의 탐욕" 
+                    : macroData.indicators.fear_greed.value > 60 
+                    ? "탐욕" 
+                    : macroData.indicators.fear_greed.value > 40 
+                    ? "중립" 
+                    : macroData.indicators.fear_greed.value > 30 
+                    ? "공포" 
+                    : "극도의 공포"}
+                </div>
+              </div>
+            </div>
+            
             {/* 게이지 바 */}
-            <div className="relative h-8 bg-gradient-to-r from-danger via-yellow-500 to-success rounded-full overflow-hidden">
+            <div className="relative h-12 bg-gradient-to-r from-danger via-yellow-500 to-success rounded-full overflow-hidden">
               <div 
-                className="absolute top-0 h-full w-1 bg-white shadow-lg"
-                style={{ left: `${macroData.indicators.fear_greed.value}%` }}
+                className="absolute top-0 h-full w-2 bg-white shadow-lg z-10"
+                style={{ left: `${Math.max(0, Math.min(100, macroData.indicators.fear_greed.value))}%`, transform: 'translateX(-50%)' }}
               >
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-sm font-bold whitespace-nowrap">
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 text-sm font-bold whitespace-nowrap bg-background px-2 py-1 rounded shadow">
                   {macroData.indicators.fear_greed.value}
                 </div>
               </div>
             </div>
             
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Extreme Fear</span>
-              <span>Fear</span>
-              <span>Neutral</span>
-              <span>Greed</span>
-              <span>Extreme Greed</span>
+            <div className="flex justify-between text-xs text-muted-foreground px-2">
+              <span>0<br />Extreme Fear</span>
+              <span>25<br />Fear</span>
+              <span>50<br />Neutral</span>
+              <span>75<br />Greed</span>
+              <span>100<br />Extreme Greed</span>
             </div>
             
             <div className="rounded-lg bg-muted p-4">
@@ -327,6 +472,13 @@ export default function MacroPage() {
                 }`}>
                   {macroData.indicators.vix.status}
                 </strong> 변동성을 나타내고 있습니다.
+                {macroData.indicators.usd_krw && (
+                  <> 원달러 환율은 <strong>{macroData.indicators.usd_krw.value}원</strong>이며,
+                  {macroData.indicators.dxy && (
+                    <> 달러 지수(DXY)는 <strong>{macroData.indicators.dxy.value}</strong>입니다.</>
+                  )}
+                  </>
+                )}
               </p>
             </div>
             

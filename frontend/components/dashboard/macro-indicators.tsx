@@ -3,6 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, DollarSign, TrendingUp, Globe } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
+import { getApiUrl } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 interface MacroData {
@@ -19,17 +20,35 @@ export function MacroIndicators() {
   useEffect(() => {
     const fetchMacroData = async () => {
       try {
-        const response = await fetch("http://localhost:8001/api/macro/overview");
+        // 캐시 방지를 위해 timestamp 추가 및 no-cache 헤더 사용
+        const response = await fetch(getApiUrl("/api/macro/overview") + `?force_refresh=true&t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const data = await response.json();
+        console.log("매크로 데이터 업데이트:", data.indicators?.fear_greed);
         setMacroData(data.indicators || null);
       } catch (error) {
         console.error("Failed to fetch macro data:", error);
+        setMacroData(null);
       } finally {
         setLoading(false);
       }
     };
 
     fetchMacroData();
+    
+    // 1분마다 자동 갱신 (더 자주 업데이트)
+    const interval = setInterval(fetchMacroData, 1 * 60 * 1000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   if (loading || !macroData) {
